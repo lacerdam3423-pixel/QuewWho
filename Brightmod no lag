@@ -1,0 +1,228 @@
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+
+local CONFIG = {
+	Ambient = Color3.fromRGB(255, 255, 255),
+	OutdoorAmbient = Color3.fromRGB(255, 255, 255),
+	ColorShift_Top = Color3.fromRGB(0, 0, 0),
+	ColorShift_Bottom = Color3.fromRGB(0, 0, 0),
+	Brightness = 0,
+	ExposureCompensation = 0,
+	Technology = Enum.Technology.Voxel,
+	FogStart = 0,
+	FogEnd = math.huge,
+	GlobalShadows = false,
+	EnvironmentDiffuseScale = 0,
+	EnvironmentSpecularScale = 0
+}
+
+local ATMOSPHERE_CONFIG = {
+	Density = 0.3,
+	Offset = 0.25,
+	Color = Color3.fromRGB(199, 199, 199),
+	Decay = Color3.fromRGB(106, 112, 125),
+	Glare = 0,
+	Haze = 0
+}
+
+local DELETAR_APENAS = {
+	["Sky"] = true
+}
+
+local atmosphereConnections = {}
+
+local function limparConexoesAtmosphere()
+	for _, conn in pairs(atmosphereConnections) do
+		if typeof(conn) == "RBXScriptConnection" then
+			conn:Disconnect()
+		end
+	end
+	atmosphereConnections = {}
+end
+
+local function aplicarConfigLighting()
+	for prop, valor in pairs(CONFIG) do
+		pcall(function()
+			if Lighting[prop] ~= valor then
+				Lighting[prop] = valor
+			end
+		end)
+	end
+end
+
+local function aplicarConfigAtmosphere(atmosphere)
+	if not atmosphere or not atmosphere:IsA("Atmosphere") then return end
+	
+	for prop, valor in pairs(ATMOSPHERE_CONFIG) do
+		if atmosphere[prop] ~= valor then
+			atmosphere[prop] = valor
+		end
+	end
+end
+
+local function setupAtmosphereMonitor()
+	limparConexoesAtmosphere()
+	
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	
+	if not atmosphere then
+		atmosphere = Instance.new("Atmosphere")
+		atmosphere.Name = "ForcedAtmosphere"
+		atmosphere.Parent = Lighting
+	end
+	
+	aplicarConfigAtmosphere(atmosphere)
+	
+	for prop in pairs(ATMOSPHERE_CONFIG) do
+		local conn = atmosphere:GetPropertyChangedSignal(prop):Connect(function()
+			if atmosphere[prop] ~= ATMOSPHERE_CONFIG[prop] then
+				atmosphere[prop] = ATMOSPHERE_CONFIG[prop]
+			end
+		end)
+		table.insert(atmosphereConnections, conn)
+	end
+	
+	local ancestryConn = atmosphere.AncestryChanged:Connect(function(child, parent)
+		if child == atmosphere and not parent then
+			task.defer(function()
+				local newAtm = Lighting:FindFirstChildOfClass("Atmosphere")
+				if not newAtm then
+					newAtm = Instance.new("Atmosphere")
+					newAtm.Parent = Lighting
+				end
+				setupAtmosphereMonitor()
+			end)
+		end
+	end)
+	table.insert(atmosphereConnections, ancestryConn)
+end
+
+local function processarInstanciaLighting(item)
+	if not item then return end
+	
+	if item:IsA("GuiBase") or item:IsA("ScreenGui") or item:IsA("BillboardGui") or item:IsA("SurfaceGui") then
+		return
+	end
+	
+	if DELETAR_APENAS[item.ClassName] then
+		item:Destroy()
+		return
+	end
+	
+	local success, hasEnabled = pcall(function()
+		return item.Enabled
+	end)
+	
+	if success and hasEnabled ~= nil then
+		if item.Enabled ~= false then
+			item.Enabled = false
+		end
+		
+		local conn
+		conn = item:GetPropertyChangedSignal("Enabled"):Connect(function()
+			if item.Enabled ~= false then
+				item.Enabled = false
+			end
+		end)
+		
+		item.AncestryChanged:Connect(function(_, parent)
+			if not parent then
+				conn:Disconnect()
+			end
+		end)
+	end
+end
+
+local function desativarLuz(item)
+	if not item or not item:IsA("Light") then return end
+	
+	local lightTypes = {"PointLight", "SurfaceLight", "SpotLight"}
+	if table.find(lightTypes, item.ClassName) then
+		if item.Enabled then
+			item.Enabled = false
+		end
+		
+		local conn
+		conn = item:GetPropertyChangedSignal("Enabled"):Connect(function()
+			if item.Enabled then
+				item.Enabled = false
+			end
+		end)
+		
+		item.AncestryChanged:Connect(function(_, parent)
+			if not parent then
+				conn:Disconnect()
+			end
+		end)
+	end
+end
+
+task.defer(function()
+	while true do
+		task.wait(5)
+		
+		pcall(function()
+			aplicarConfigLighting()
+		end)
+		
+		task.wait()
+		
+		pcall(function()
+			local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+			if atm then
+				aplicarConfigAtmosphere(atm)
+			else
+				setupAtmosphereMonitor()
+			end
+		end)
+		
+		task.wait()
+	end
+end)
+
+aplicarConfigLighting()
+setupAtmosphereMonitor()
+
+for _, desc in ipairs(Lighting:GetDescendants()) do
+	processarInstanciaLighting(desc)
+end
+
+for _, desc in ipairs(Workspace:GetDescendants()) do
+	desativarLuz(desc)
+end
+
+Lighting.Changed:Connect(function(prop)
+	if CONFIG[prop] ~= nil then
+		if Lighting[prop] ~= CONFIG[prop] then
+			Lighting[prop] = CONFIG[prop]
+		end
+	end
+end)
+
+Lighting.DescendantAdded:Connect(function(item)
+	if item:IsA("Atmosphere") then
+		task.defer(setupAtmosphereMonitor)
+	else
+		processarInstanciaLighting(item)
+		for _, desc in ipairs(item:GetDescendants()) do
+			processarInstanciaLighting(desc)
+		end
+	end
+end)
+
+Workspace.DescendantAdded:Connect(function(item)
+	if item:IsA("Light") then
+		desativarLuz(item)
+	end
+end)
+
+local player = Players.LocalPlayer
+if player then
+	player.CharacterAdded:Connect(function()
+		task.defer(function()
+			aplicarConfigLighting()
+			setupAtmosphereMonitor()
+		end)
+	end)
+end
