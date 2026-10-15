@@ -1,6 +1,6 @@
 -- =====================================================================
--- ADVANCED CHEAT ENGINE UI & ESP SYSTEM (SHADOWPLAY SYSTEM v6.0)
--- STABLE: EVENT-BASED ESP, NO LAG, ALWAYS VISIBLE
+-- ADVANCED CHEAT ENGINE UI & ESP SYSTEM + SHIFT LOCK (SHADOWPLAY v7.0)
+-- STABLE: EVENT-BASED ESP, NO LAG, ALWAYS VISIBLE, SHIFT LOCK TAB
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -9,6 +9,7 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -24,6 +25,7 @@ local Config = {
     JumpActive = false,
     FovValue = 70,
     FovActive = false,
+    ShiftLockActive = false, -- NOVA CONFIGURAÇÃO
     
     EspOutlineActive = true,
     EspNameActive = true,
@@ -37,13 +39,21 @@ local Config = {
     CurrentTab = "Main"
 }
 
+-- =====================================================================
+-- LIMPEZA DE INSTÂNCIAS ANTERIORES
+-- =====================================================================
 local function cleanupPreviousInstances()
     local oldGui = game:GetService("CoreGui"):FindFirstChild("InstantLockBypassUI")
     if oldGui then oldGui:Destroy() end
+    local oldShiftGui = game:GetService("CoreGui"):FindFirstChild("ShiftLockGui")
+    if oldShiftGui then oldShiftGui:Destroy() end
 end
 
 cleanupPreviousInstances()
 
+-- =====================================================================
+-- DETECÇÃO DE INVENTÁRIO (COM CACHE)
+-- =====================================================================
 local roleCache = {}
 
 local function GetPlayerRole(player)
@@ -107,6 +117,9 @@ local function GetPlayerRole(player)
     return table.unpack(roleData)
 end
 
+-- =====================================================================
+-- PERSISTÊNCIA DE DADOS
+-- =====================================================================
 local function LoadConfig()
     pcall(function()
         if readfile and isfile and isfile(CONFIG_FILE) then
@@ -130,12 +143,14 @@ end
 
 LoadConfig()
 
+-- =====================================================================
+-- CORE GUI CONTAINER
+-- =====================================================================
 local ParentTarget
 if gethui then
     ParentTarget = gethui()
 elseif syn and syn.protect_gui then
     ParentTarget = game:GetService("CoreGui")
-    syn.protect_gui(ScreenGui)
 else
     ParentTarget = game:GetService("CoreGui")
 end
@@ -150,6 +165,9 @@ local TracersFolder = Instance.new("Folder")
 TracersFolder.Name = "TracersFolder"
 TracersFolder.Parent = ScreenGui
 
+-- =====================================================================
+-- SISTEMA DE SMOOTH DRAG
+-- =====================================================================
 local function MakeSmoothDraggable(guiObj, handles)
     local dragging = false
     local dragInput, dragStart, startPos
@@ -196,6 +214,9 @@ local function MakeSmoothDraggable(guiObj, handles)
     end)
 end
 
+-- =====================================================================
+-- CRIAÇÃO DA INTERFACE GRÁFICA
+-- =====================================================================
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 320, 0, 470)
@@ -222,7 +243,7 @@ local Title = Instance.new("TextLabel", TopBar)
 Title.Size = UDim2.new(1, -70, 1, 0)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "SHADOWPLAY SCRIPT V6.0"
+Title.Text = "SHADOWPLAY SCRIPT V7.0"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 11
 Title.Font = Enum.Font.GothamBold
@@ -265,6 +286,7 @@ EmojiStroke.Thickness = 2
 
 MakeSmoothDraggable(OpenEmojiBtn, OpenEmojiBtn)
 
+-- SideBar
 local SideBar = Instance.new("Frame", MainFrame)
 SideBar.Name = "SideBar"
 SideBar.Size = UDim2.new(0, 45, 1, -35)
@@ -296,6 +318,15 @@ TabEspBtn.Text = "👤"
 TabEspBtn.TextSize = 16
 Instance.new("UICorner", TabEspBtn).CornerRadius = UDim.new(0, 6)
 
+-- NOVA ABA: SHIFT LOCK
+local TabShiftBtn = Instance.new("TextButton", SideBar)
+TabShiftBtn.Size = UDim2.new(0, 35, 0, 35)
+TabShiftBtn.Position = UDim2.new(0, 5, 0, 130)
+TabShiftBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+TabShiftBtn.Text = "🔒"
+TabShiftBtn.TextSize = 16
+Instance.new("UICorner", TabShiftBtn).CornerRadius = UDim.new(0, 6)
+
 local ContentArea = Instance.new("Frame", MainFrame)
 ContentArea.Size = UDim2.new(1, -45, 1, -35)
 ContentArea.Position = UDim2.new(0, 45, 0, 35)
@@ -316,6 +347,11 @@ PageEsp.Size = UDim2.new(1, 0, 1, 0)
 PageEsp.BackgroundTransparency = 1
 PageEsp.Visible = false
 
+local PageShift = Instance.new("Frame", ContentArea)
+PageShift.Size = UDim2.new(1, 0, 1, 0)
+PageShift.BackgroundTransparency = 1
+PageShift.Visible = false
+
 local function updateStatusBorder(btn, stroke, isActive)
     if isActive then
         btn.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
@@ -328,133 +364,27 @@ local function updateStatusBorder(btn, stroke, isActive)
     end
 end
 
+-- =====================================================================
+-- CONTEÚDO DAS ABAS
+-- =====================================================================
+-- (Main, Render, Esp mantidos iguais, adicionando apenas o Toggle de Shift Lock na PageShift)
+
 local HBLabel = Instance.new("TextLabel", PageMain)
-HBLabel.Size = UDim2.new(1, -20, 0, 18)
-HBLabel.Position = UDim2.new(0, 10, 0, 10)
-HBLabel.BackgroundTransparency = 1
-HBLabel.Text = "Hitbox Clássica (0 - 200):"
-HBLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-HBLabel.TextSize = 10
-HBLabel.Font = Enum.Font.Gotham
-HBLabel.TextXAlignment = Enum.TextXAlignment.Left
+HBLabel.Size = UDim2.new(1, -20, 0, 18); HBLabel.Position = UDim2.new(0, 10, 0, 10); HBLabel.BackgroundTransparency = 1; HBLabel.Text = "Hitbox Clássica (0 - 200):"; HBLabel.TextColor3 = Color3.fromRGB(180, 180, 180); HBLabel.TextSize = 10; HBLabel.Font = Enum.Font.Gotham; HBLabel.TextXAlignment = Enum.TextXAlignment.Left
+local HBBox = Instance.new("TextBox", PageMain); HBBox.Size = UDim2.new(1, -20, 0, 28); HBBox.Position = UDim2.new(0, 10, 0, 30); HBBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20); HBBox.TextColor3 = Color3.fromRGB(255, 255, 255); HBBox.Text = tostring(Config.HitboxSize); HBBox.Font = Enum.Font.GothamMedium; HBBox.TextSize = 11; Instance.new("UICorner", HBBox).CornerRadius = UDim.new(0, 6); local HBBoxStroke = Instance.new("UIStroke", HBBox); HBBoxStroke.Color = Color3.fromRGB(50, 50, 50)
+local HBBtn = Instance.new("TextButton", PageMain); HBBtn.Size = UDim2.new(1, -20, 0, 28); HBBtn.Position = UDim2.new(0, 10, 0, 63); HBBtn.Text = Config.HitboxActive and "HITBOX: ATIVADA" or "HITBOX: DESATIVADA"; HBBtn.Font = Enum.Font.GothamBold; HBBtn.TextSize = 10; Instance.new("UICorner", HBBtn).CornerRadius = UDim.new(0, 6); local HBBtnStroke = Instance.new("UIStroke", HBBtn); updateStatusBorder(HBBtn, HBBtnStroke, Config.HitboxActive)
 
-local HBBox = Instance.new("TextBox", PageMain)
-HBBox.Size = UDim2.new(1, -20, 0, 28)
-HBBox.Position = UDim2.new(0, 10, 0, 30)
-HBBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-HBBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-HBBox.Text = tostring(Config.HitboxSize)
-HBBox.Font = Enum.Font.GothamMedium
-HBBox.TextSize = 11
-Instance.new("UICorner", HBBox).CornerRadius = UDim.new(0, 6)
-local HBBoxStroke = Instance.new("UIStroke", HBBox)
-HBBoxStroke.Color = Color3.fromRGB(50, 50, 50)
+local SPLabel = Instance.new("TextLabel", PageMain); SPLabel.Size = UDim2.new(1, -20, 0, 18); SPLabel.Position = UDim2.new(0, 10, 0, 100); SPLabel.BackgroundTransparency = 1; SPLabel.Text = "Velocidade Fixa (0 - 999):"; SPLabel.TextColor3 = Color3.fromRGB(180, 180, 180); SPLabel.TextSize = 10; SPLabel.Font = Enum.Font.Gotham; SPLabel.TextXAlignment = Enum.TextXAlignment.Left
+local SPBox = Instance.new("TextBox", PageMain); SPBox.Size = UDim2.new(1, -20, 0, 28); SPBox.Position = UDim2.new(0, 10, 0, 120); SPBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20); SPBox.TextColor3 = Color3.fromRGB(255, 255, 255); SPBox.Text = tostring(Config.SpeedValue); SPBox.Font = Enum.Font.GothamMedium; SPBox.TextSize = 11; Instance.new("UICorner", SPBox).CornerRadius = UDim.new(0, 6); local SPBoxStroke = Instance.new("UIStroke", SPBox); SPBoxStroke.Color = Color3.fromRGB(50, 50, 50)
+local SPBtn = Instance.new("TextButton", PageMain); SPBtn.Size = UDim2.new(1, -20, 0, 28); SPBtn.Position = UDim2.new(0, 10, 0, 153); SPBtn.Text = Config.SpeedActive and "SPEED: ATIVADA" or "SPEED: DESATIVADA"; SPBtn.Font = Enum.Font.GothamBold; SPBtn.TextSize = 10; Instance.new("UICorner", SPBtn).CornerRadius = UDim.new(0, 6); local SPBtnStroke = Instance.new("UIStroke", SPBtn); updateStatusBorder(SPBtn, SPBtnStroke, Config.SpeedActive)
 
-local HBBtn = Instance.new("TextButton", PageMain)
-HBBtn.Size = UDim2.new(1, -20, 0, 28)
-HBBtn.Position = UDim2.new(0, 10, 0, 63)
-HBBtn.Text = Config.HitboxActive and "HITBOX: ATIVADA" or "HITBOX: DESATIVADA"
-HBBtn.Font = Enum.Font.GothamBold
-HBBtn.TextSize = 10
-Instance.new("UICorner", HBBtn).CornerRadius = UDim.new(0, 6)
-local HBBtnStroke = Instance.new("UIStroke", HBBtn)
-updateStatusBorder(HBBtn, HBBtnStroke, Config.HitboxActive)
+local JPLabel = Instance.new("TextLabel", PageMain); JPLabel.Size = UDim2.new(1, -20, 0, 18); JPLabel.Position = UDim2.new(0, 10, 0, 190); JPLabel.BackgroundTransparency = 1; JPLabel.Text = "Pulo Fixo (0 - 999):"; JPLabel.TextColor3 = Color3.fromRGB(180, 180, 180); JPLabel.TextSize = 10; JPLabel.Font = Enum.Font.Gotham; JPLabel.TextXAlignment = Enum.TextXAlignment.Left
+local JPBox = Instance.new("TextBox", PageMain); JPBox.Size = UDim2.new(1, -20, 0, 28); JPBox.Position = UDim2.new(0, 10, 0, 210); JPBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20); JPBox.TextColor3 = Color3.fromRGB(255, 255, 255); JPBox.Text = tostring(Config.JumpValue); JPBox.Font = Enum.Font.GothamMedium; JPBox.TextSize = 11; Instance.new("UICorner", JPBox).CornerRadius = UDim.new(0, 6); local JPBoxStroke = Instance.new("UIStroke", JPBox); JPBoxStroke.Color = Color3.fromRGB(50, 50, 50)
+local JPBtn = Instance.new("TextButton", PageMain); JPBtn.Size = UDim2.new(1, -20, 0, 28); JPBtn.Position = UDim2.new(0, 10, 0, 243); JPBtn.Text = Config.JumpActive and "JUMP: ATIVADO" or "JUMP: DESATIVADO"; JPBtn.Font = Enum.Font.GothamBold; JPBtn.TextSize = 10; Instance.new("UICorner", JPBtn).CornerRadius = UDim.new(0, 6); local JPBtnStroke = Instance.new("UIStroke", JPBtn); updateStatusBorder(JPBtn, JPBtnStroke, Config.JumpActive)
 
-local SPLabel = Instance.new("TextLabel", PageMain)
-SPLabel.Size = UDim2.new(1, -20, 0, 18)
-SPLabel.Position = UDim2.new(0, 10, 0, 100)
-SPLabel.BackgroundTransparency = 1
-SPLabel.Text = "Velocidade Fixa (0 - 999):"
-SPLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-SPLabel.TextSize = 10
-SPLabel.Font = Enum.Font.Gotham
-SPLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-local SPBox = Instance.new("TextBox", PageMain)
-SPBox.Size = UDim2.new(1, -20, 0, 28)
-SPBox.Position = UDim2.new(0, 10, 0, 120)
-SPBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-SPBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-SPBox.Text = tostring(Config.SpeedValue)
-SPBox.Font = Enum.Font.GothamMedium
-SPBox.TextSize = 11
-Instance.new("UICorner", SPBox).CornerRadius = UDim.new(0, 6)
-local SPBoxStroke = Instance.new("UIStroke", SPBox)
-SPBoxStroke.Color = Color3.fromRGB(50, 50, 50)
-
-local SPBtn = Instance.new("TextButton", PageMain)
-SPBtn.Size = UDim2.new(1, -20, 0, 28)
-SPBtn.Position = UDim2.new(0, 10, 0, 153)
-SPBtn.Text = Config.SpeedActive and "SPEED: ATIVADA" or "SPEED: DESATIVADA"
-SPBtn.Font = Enum.Font.GothamBold
-SPBtn.TextSize = 10
-Instance.new("UICorner", SPBtn).CornerRadius = UDim.new(0, 6)
-local SPBtnStroke = Instance.new("UIStroke", SPBtn)
-updateStatusBorder(SPBtn, SPBtnStroke, Config.SpeedActive)
-
-local JPLabel = Instance.new("TextLabel", PageMain)
-JPLabel.Size = UDim2.new(1, -20, 0, 18)
-JPLabel.Position = UDim2.new(0, 10, 0, 190)
-JPLabel.BackgroundTransparency = 1
-JPLabel.Text = "Pulo Fixo (0 - 999):"
-JPLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-JPLabel.TextSize = 10
-JPLabel.Font = Enum.Font.Gotham
-JPLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-local JPBox = Instance.new("TextBox", PageMain)
-JPBox.Size = UDim2.new(1, -20, 0, 28)
-JPBox.Position = UDim2.new(0, 10, 0, 210)
-JPBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-JPBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-JPBox.Text = tostring(Config.JumpValue)
-JPBox.Font = Enum.Font.GothamMedium
-JPBox.TextSize = 11
-Instance.new("UICorner", JPBox).CornerRadius = UDim.new(0, 6)
-local JPBoxStroke = Instance.new("UIStroke", JPBox)
-JPBoxStroke.Color = Color3.fromRGB(50, 50, 50)
-
-local JPBtn = Instance.new("TextButton", PageMain)
-JPBtn.Size = UDim2.new(1, -20, 0, 28)
-JPBtn.Position = UDim2.new(0, 10, 0, 243)
-JPBtn.Text = Config.JumpActive and "JUMP: ATIVADO" or "JUMP: DESATIVADO"
-JPBtn.Font = Enum.Font.GothamBold
-JPBtn.TextSize = 10
-Instance.new("UICorner", JPBtn).CornerRadius = UDim.new(0, 6)
-local JPBtnStroke = Instance.new("UIStroke", JPBtn)
-updateStatusBorder(JPBtn, JPBtnStroke, Config.JumpActive)
-
-local FOVLabel = Instance.new("TextLabel", PageRender)
-FOVLabel.Size = UDim2.new(1, -20, 0, 18)
-FOVLabel.Position = UDim2.new(0, 10, 0, 10)
-FOVLabel.BackgroundTransparency = 1
-FOVLabel.Text = "FOV Infinito sem Limites (0 - 9999):"
-FOVLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-FOVLabel.TextSize = 10
-FOVLabel.Font = Enum.Font.Gotham
-FOVLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-local FOVBox = Instance.new("TextBox", PageRender)
-FOVBox.Size = UDim2.new(1, -20, 0, 28)
-FOVBox.Position = UDim2.new(0, 10, 0, 30)
-FOVBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-FOVBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-FOVBox.Text = tostring(Config.FovValue)
-FOVBox.Font = Enum.Font.GothamMedium
-FOVBox.TextSize = 11
-Instance.new("UICorner", FOVBox).CornerRadius = UDim.new(0, 6)
-local FOVBoxStroke = Instance.new("UIStroke", FOVBox)
-FOVBoxStroke.Color = Color3.fromRGB(50, 50, 50)
-
-local FOVBtn = Instance.new("TextButton", PageRender)
-FOVBtn.Size = UDim2.new(1, -20, 0, 28)
-FOVBtn.Position = UDim2.new(0, 10, 0, 63)
-FOVBtn.Text = Config.FovActive and "FOV INFINITO: ATIVADO" or "FOV INFINITO: DESATIVADO"
-FOVBtn.Font = Enum.Font.GothamBold
-FOVBtn.TextSize = 10
-Instance.new("UICorner", FOVBtn).CornerRadius = UDim.new(0, 6)
-local FOVBtnStroke = Instance.new("UIStroke", FOVBtn)
-updateStatusBorder(FOVBtn, FOVBtnStroke, Config.FovActive)
+local FOVLabel = Instance.new("TextLabel", PageRender); FOVLabel.Size = UDim2.new(1, -20, 0, 18); FOVLabel.Position = UDim2.new(0, 10, 0, 10); FOVLabel.BackgroundTransparency = 1; FOVLabel.Text = "FOV Infinito sem Limites (0 - 9999):"; FOVLabel.TextColor3 = Color3.fromRGB(180, 180, 180); FOVLabel.TextSize = 10; FOVLabel.Font = Enum.Font.Gotham; FOVLabel.TextXAlignment = Enum.TextXAlignment.Left
+local FOVBox = Instance.new("TextBox", PageRender); FOVBox.Size = UDim2.new(1, -20, 0, 28); FOVBox.Position = UDim2.new(0, 10, 0, 30); FOVBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20); FOVBox.TextColor3 = Color3.fromRGB(255, 255, 255); FOVBox.Text = tostring(Config.FovValue); FOVBox.Font = Enum.Font.GothamMedium; FOVBox.TextSize = 11; Instance.new("UICorner", FOVBox).CornerRadius = UDim.new(0, 6); local FOVBoxStroke = Instance.new("UIStroke", FOVBox); FOVBoxStroke.Color = Color3.fromRGB(50, 50, 50)
+local FOVBtn = Instance.new("TextButton", PageRender); FOVBtn.Size = UDim2.new(1, -20, 0, 28); FOVBtn.Position = UDim2.new(0, 10, 0, 63); FOVBtn.Text = Config.FovActive and "FOV INFINITO: ATIVADO" or "FOV INFINITO: DESATIVADO"; FOVBtn.Font = Enum.Font.GothamBold; FOVBtn.TextSize = 10; Instance.new("UICorner", FOVBtn).CornerRadius = UDim.new(0, 6); local FOVBtnStroke = Instance.new("UIStroke", FOVBtn); updateStatusBorder(FOVBtn, FOVBtnStroke, Config.FovActive)
 
 local function createToggle(parent, yPos, text, configKey)
     local btn = Instance.new("TextButton", parent)
@@ -473,7 +403,7 @@ local function createToggle(parent, yPos, text, configKey)
         updateStatusBorder(btn, stroke, Config[configKey])
         SaveConfig()
     end)
-    return btn
+    return btn, stroke
 end
 
 createToggle(PageEsp, 10, "ESP HIGHLIGHT", "EspOutlineActive")
@@ -485,53 +415,126 @@ createToggle(PageEsp, 185, "LINHAS TRACERS (TRACK)", "EspTracersActive")
 createToggle(PageEsp, 220, "ESP RAINBOW (CORES)", "EspRainbowActive")
 createToggle(PageEsp, 255, "ESP DISTÂNCIA (STUDS)", "EspStudsActive")
 
-local FovConnection
+-- TOGGLE DE SHIFT LOCK NA NOVA ABA
+local ShiftLockBtn, ShiftLockStroke = createToggle(PageShift, 10, "SHIFT LOCK", "ShiftLockActive")
 
+-- =====================================================================
+-- SHIFT LOCK LOGIC
+-- =====================================================================
+local isShiftLocked = false
+local TEXTURE_OFF = "rbxasset://textures/ui/mouseLock_off.png"
+local TEXTURE_ON = "rbxasset://textures/ui/mouseLock_on.png"
+
+-- Botão flutuante de Shift Lock (sincronizado com a UI)
+local shiftButton = Instance.new("ImageButton")
+shiftButton.Name = "ShiftLockButton"
+shiftButton.Size = UDim2.new(0, 50, 0, 50)
+shiftButton.Position = UDim2.new(1, -70, 0.5, -25)
+shiftButton.BackgroundTransparency = 1
+shiftButton.Image = TEXTURE_OFF
+shiftButton.Visible = false -- Só aparece quando ativado
+shiftButton.Parent = ScreenGui
+
+local crosshair = Instance.new("ImageLabel")
+crosshair.Name = "ShiftLockCrosshair"
+crosshair.Size = UDim2.new(0, 32, 0, 32)
+crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
+crosshair.Position = UDim2.new(0.5, 0, 0.5, 0)
+crosshair.BackgroundTransparency = 1
+crosshair.Image = "rbxasset://textures/MouseLockedCursor.png"
+crosshair.Visible = false
+crosshair.Parent = ScreenGui
+
+local function setShiftLock(enabled)
+    isShiftLocked = enabled
+    Config.ShiftLockActive = enabled
+    
+    -- Atualiza UI
+    ShiftLockBtn.Text = enabled and "SHIFT LOCK: ATIVADO" or "SHIFT LOCK: DESATIVADO"
+    updateStatusBorder(ShiftLockBtn, ShiftLockStroke, enabled)
+    SaveConfig()
+    
+    -- Atualiza elementos visuais
+    if isShiftLocked then
+        shiftButton.Image = TEXTURE_ON
+        shiftButton.Visible = true
+        crosshair.Visible = true
+        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+    else
+        shiftButton.Image = TEXTURE_OFF
+        shiftButton.Visible = false
+        crosshair.Visible = false
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        
+        -- Restaura rotação automática
+        local character = LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then humanoid.AutoRotate = true end
+        end
+    end
+end
+
+-- Aplicar config salva ao iniciar
+setShiftLock(Config.ShiftLockActive)
+
+-- Botão flutuante click
+shiftButton.MouseButton1Click:Connect(function()
+    setShiftLock(not isShiftLocked)
+end)
+
+-- Tecla Left Shift
+ContextActionService:BindAction("ToggleShiftLock", function(actionName, inputState)
+    if inputState == Enum.UserInputState.Begin then
+        setShiftLock(not isShiftLocked)
+    end
+    return Enum.ContextActionResult.Pass
+end, false, Enum.KeyCode.LeftShift)
+
+-- Resetar ao renascer
+LocalPlayer.CharacterAdded:Connect(function()
+    setShiftLock(false)
+end)
+
+-- =====================================================================
+-- HOOK DE CÂMERA (FOV)
+-- =====================================================================
+local FovConnection
 local function hookCameraFov()
     if FovConnection then FovConnection:Disconnect() end
-
     if not Config.FovActive then
         Config.FovValue = math.floor(Camera.FieldOfView)
         FOVBox.Text = tostring(Config.FovValue)
     else
         Camera.FieldOfView = Config.FovValue
     end
-
     FovConnection = Camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
         if Config.FovActive then
-            if Camera.FieldOfView ~= Config.FovValue then
-                Camera.FieldOfView = Config.FovValue
-            end
+            if Camera.FieldOfView ~= Config.FovValue then Camera.FieldOfView = Config.FovValue end
         else
             Config.FovValue = math.floor(Camera.FieldOfView)
             FOVBox.Text = tostring(Config.FovValue)
         end
     end)
 end
-
 hookCameraFov()
 Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     Camera = Workspace.CurrentCamera
     hookCameraFov()
 end)
 
+-- =====================================================================
+-- MONITORAMENTO DE PLAYER (SPEED / JUMP)
+-- =====================================================================
 local PlayerConnections = {}
-
 local function applyJumpValue(hum)
-    if hum.UseJumpPower then
-        hum.JumpPower = Config.JumpValue
-    else
-        hum.JumpHeight = Config.JumpValue
-    end
+    if hum.UseJumpPower then hum.JumpPower = Config.JumpValue else hum.JumpHeight = Config.JumpValue end
 end
 
 local function hookAndMonitorHumanoid(hum)
     if not hum then return end
-    
     if PlayerConnections[hum] then
-        for _, conn in ipairs(PlayerConnections[hum]) do
-            conn:Disconnect()
-        end
+        for _, conn in ipairs(PlayerConnections[hum]) do conn:Disconnect() end
     end
     PlayerConnections[hum] = {}
 
@@ -551,16 +554,12 @@ local function hookAndMonitorHumanoid(hum)
     end
 
     local c1 = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-        if Config.SpeedActive and hum.WalkSpeed ~= Config.SpeedValue then
-            hum.WalkSpeed = Config.SpeedValue
-        end
+        if Config.SpeedActive and hum.WalkSpeed ~= Config.SpeedValue then hum.WalkSpeed = Config.SpeedValue end
     end)
     table.insert(PlayerConnections[hum], c1)
 
     local c2 = hum:GetPropertyChangedSignal("JumpPower"):Connect(function()
-        if Config.JumpActive and hum.UseJumpPower and hum.JumpPower ~= Config.JumpValue then
-            hum.JumpPower = Config.JumpValue
-        end
+        if Config.JumpActive and hum.UseJumpPower and hum.JumpPower ~= Config.JumpValue then hum.JumpPower = Config.JumpValue end
     end)
     table.insert(PlayerConnections[hum], c2)
 end
@@ -569,25 +568,17 @@ if LocalPlayer.Character then
     local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if hum then hookAndMonitorHumanoid(hum) end
 end
-
 LocalPlayer.CharacterAdded:Connect(function(char)
     local hum = char:WaitForChild("Humanoid", 5)
     if hum then hookAndMonitorHumanoid(hum) end
 end)
 
-local hitboxConnection
-
-local function updateHitbox()
-    if hitboxConnection then hitboxConnection:Disconnect() end
-    
-    if not Config.HitboxActive then return end
-    
-    hitboxConnection = RunService.RenderStepped:Connect(function()
-        if not Config.HitboxActive then
-            hitboxConnection:Disconnect()
-            return
-        end
-        
+-- =====================================================================
+-- RENDER LOOP UNIFICADO (HITBOX + SHIFT LOCK)
+-- =====================================================================
+RunService.RenderStepped:Connect(function()
+    -- 1. HITBOX
+    if Config.HitboxActive then
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and player.Character then
                 local hrp = player.Character:FindFirstChild("HumanoidRootPart")
@@ -600,11 +591,32 @@ local function updateHitbox()
                 end
             end
         end
-    end)
-end
+    end
 
-updateHitbox()
+    -- 2. SHIFT LOCK
+    if isShiftLocked then
+        local character = LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local rootPart = character:FindFirstChild("HumanoidRootPart")
+            if humanoid and rootPart and humanoid.Health > 0 then
+                UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+                humanoid.AutoRotate = false
+                
+                local cameraCFrame = Camera.CFrame
+                local lookVector = Vector3.new(cameraCFrame.LookVector.X, 0, cameraCFrame.LookVector.Z)
+                if lookVector.Magnitude > 0 then
+                    rootPart.CFrame = CFrame.lookAt(rootPart.Position, rootPart.Position + lookVector)
+                end
+                Camera.CFrame = cameraCFrame * CFrame.new(1.75, 0.5, 0)
+            end
+        end
+    end
+end)
 
+-- =====================================================================
+-- ESP AVANÇADO (EVENT-BASED, ESTÁVEL)
+-- =====================================================================
 local playerEspData = {}
 
 local function cleanupPlayerEsp(player)
@@ -624,7 +636,6 @@ local function setupPlayerEsp(player)
 
     local function onCharacterAdded(character)
         cleanupPlayerEsp(player)
-        
         local head = character:WaitForChild("Head", 5)
         local humanoid = character:WaitForChild("Humanoid", 5)
         if not head or not humanoid then return end
@@ -661,31 +672,18 @@ local function setupPlayerEsp(player)
         tracerLine.BackgroundColor3 = Color3.fromRGB(0, 255, 150)
         tracerLine.Visible = false
 
-        playerEspData[player] = {
-            highlight = highlight,
-            bgui = bgui,
-            label = label,
-            tracerLine = tracerLine,
-            character = character,
-            humanoid = humanoid
-        }
+        playerEspData[player] = {highlight = highlight, bgui = bgui, label = label, tracerLine = tracerLine, character = character, humanoid = humanoid}
 
         local renderConnection
         renderConnection = RunService.RenderStepped:Connect(function()
             if not character or not character.Parent or humanoid.Health <= 0 then
-                highlight.Enabled = false
-                bgui.Enabled = false
-                tracerLine.Visible = false
+                highlight.Enabled = false; bgui.Enabled = false; tracerLine.Visible = false
                 return
             end
 
-            local anyEspActive = Config.EspOutlineActive or Config.EspNameActive or Config.EspRoleActive or 
-                                Config.EspTimeActive or Config.EspHealthTextActive or Config.EspTracersActive or Config.EspStudsActive
-            
+            local anyEspActive = Config.EspOutlineActive or Config.EspNameActive or Config.EspRoleActive or Config.EspTimeActive or Config.EspHealthTextActive or Config.EspTracersActive or Config.EspStudsActive
             if not anyEspActive then
-                highlight.Enabled = false
-                bgui.Enabled = false
-                tracerLine.Visible = false
+                highlight.Enabled = false; bgui.Enabled = false; tracerLine.Visible = false
                 return
             end
 
@@ -707,26 +705,14 @@ local function setupPlayerEsp(player)
             if Config.EspNameActive or Config.EspRoleActive or Config.EspTimeActive or Config.EspHealthTextActive or Config.EspStudsActive then
                 bgui.Enabled = true
                 local textStr = ""
-                
-                if Config.EspNameActive then
-                    textStr = textStr .. "@" .. player.Name .. "\n"
-                end
+                if Config.EspNameActive then textStr = textStr .. "@" .. player.Name .. "\n" end
                 if Config.EspRoleActive then
                     textStr = textStr .. "[" .. roleTitle .. "]\n"
-                    if activeWeapon ~= "Nenhuma" then
-                        textStr = textStr .. "Arma: " .. activeWeapon .. "\n"
-                    end
+                    if activeWeapon ~= "Nenhuma" then textStr = textStr .. "Arma: " .. activeWeapon .. "\n" end
                 end
-                if Config.EspTimeActive then
-                    local teamName = player.Team and player.Team.Name or "Sem Time"
-                    textStr = textStr .. "Time: " .. teamName .. "\n"
-                end
-                if Config.EspHealthTextActive then
-                    textStr = textStr .. "HP: " .. math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth) .. "\n"
-                end
-                if Config.EspStudsActive then
-                    textStr = textStr .. distance .. " studs"
-                end
+                if Config.EspTimeActive then textStr = textStr .. "Time: " .. (player.Team and player.Team.Name or "Sem Time") .. "\n" end
+                if Config.EspHealthTextActive then textStr = textStr .. "HP: " .. math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth) .. "\n" end
+                if Config.EspStudsActive then textStr = textStr .. distance .. " studs" end
                 
                 label.Text = textStr
                 label.TextColor3 = currentTargetColor
@@ -741,7 +727,6 @@ local function setupPlayerEsp(player)
                     local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
                     local targetPos = Vector2.new(vector.X, vector.Y)
                     local dist = (targetPos - screenCenter).Magnitude
-
                     tracerLine.Size = UDim2.new(0, dist, 0, 1.5)
                     tracerLine.Position = UDim2.new(0, (screenCenter.X + targetPos.X) / 2, 0, (screenCenter.Y + targetPos.Y) / 2)
                     tracerLine.Rotation = math.deg(math.atan2(targetPos.Y - screenCenter.Y, targetPos.X - screenCenter.X))
@@ -754,7 +739,6 @@ local function setupPlayerEsp(player)
                 tracerLine.Visible = false
             end
         end)
-
         playerEspData[player].renderConnection = renderConnection
     end
 
@@ -766,36 +750,28 @@ for _, p in ipairs(Players:GetPlayers()) do setupPlayerEsp(p) end
 Players.PlayerAdded:Connect(setupPlayerEsp)
 Players.PlayerRemoving:Connect(cleanupPlayerEsp)
 
-TabMainBtn.MouseButton1Click:Connect(function()
-    PageMain.Visible = true; PageRender.Visible = false; PageEsp.Visible = false
-    TabMainBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    TabRenderBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    TabEspBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-end)
+-- =====================================================================
+-- CONTROLES DE NAVEGAÇÃO DA UI
+-- =====================================================================
+local function switchTab(targetPage, activeBtn, inactiveBtn1, inactiveBtn2, inactiveBtn3)
+    PageMain.Visible = (targetPage == PageMain)
+    PageRender.Visible = (targetPage == PageRender)
+    PageEsp.Visible = (targetPage == PageEsp)
+    PageShift.Visible = (targetPage == PageShift)
+    
+    activeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    inactiveBtn1.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    inactiveBtn2.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    inactiveBtn3.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+end
 
-TabRenderBtn.MouseButton1Click:Connect(function()
-    PageMain.Visible = false; PageRender.Visible = true; PageEsp.Visible = false
-    TabMainBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    TabRenderBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    TabEspBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-end)
+TabMainBtn.MouseButton1Click:Connect(function() switchTab(PageMain, TabMainBtn, TabRenderBtn, TabEspBtn, TabShiftBtn) end)
+TabRenderBtn.MouseButton1Click:Connect(function() switchTab(PageRender, TabRenderBtn, TabMainBtn, TabEspBtn, TabShiftBtn) end)
+TabEspBtn.MouseButton1Click:Connect(function() switchTab(PageEsp, TabEspBtn, TabMainBtn, TabRenderBtn, TabShiftBtn) end)
+TabShiftBtn.MouseButton1Click:Connect(function() switchTab(PageShift, TabShiftBtn, TabMainBtn, TabRenderBtn, TabEspBtn) end)
 
-TabEspBtn.MouseButton1Click:Connect(function()
-    PageMain.Visible = false; PageRender.Visible = false; PageEsp.Visible = true
-    TabMainBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    TabRenderBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    TabEspBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-end)
-
-CloseBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    OpenEmojiBtn.Visible = true
-end)
-
-OpenEmojiBtn.MouseButton1Click:Connect(function()
-    OpenEmojiBtn.Visible = false
-    MainFrame.Visible = true
-end)
+CloseBtn.MouseButton1Click:Connect(function() MainFrame.Visible = false; OpenEmojiBtn.Visible = true end)
+OpenEmojiBtn.MouseButton1Click:Connect(function() OpenEmojiBtn.Visible = false; MainFrame.Visible = true end)
 
 local isMinimized = false
 MinimizeBtn.MouseButton1Click:Connect(function()
@@ -809,48 +785,17 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-HBBox.FocusLost:Connect(function()
-    local num = tonumber(HBBox.Text)
-    if num then Config.HitboxSize = math.clamp(num, 0, 200); HBBox.Text = tostring(Config.HitboxSize); SaveConfig(); updateHitbox() end
-end)
+-- Eventos dos botões
+HBBox.FocusLost:Connect(function() local num = tonumber(HBBox.Text); if num then Config.HitboxSize = math.clamp(num, 0, 200); HBBox.Text = tostring(Config.HitboxSize); SaveConfig() end end)
+HBBtn.MouseButton1Click:Connect(function() Config.HitboxActive = not Config.HitboxActive; HBBtn.Text = Config.HitboxActive and "HITBOX: ATIVADA" or "HITBOX: DESATIVADA"; updateStatusBorder(HBBtn, HBBtnStroke, Config.HitboxActive); SaveConfig() end)
 
-HBBtn.MouseButton1Click:Connect(function()
-    Config.HitboxActive = not Config.HitboxActive
-    HBBtn.Text = Config.HitboxActive and "HITBOX: ATIVADA" or "HITBOX: DESATIVADA"
-    updateStatusBorder(HBBtn, HBBtnStroke, Config.HitboxActive)
-    SaveConfig()
-    updateHitbox()
-end)
+SPBox.FocusLost:Connect(function() local num = tonumber(SPBox.Text); if num then Config.SpeedValue = math.clamp(num, 0, 999); SPBox.Text = tostring(Config.SpeedValue); SaveConfig() end end)
+SPBtn.MouseButton1Click:Connect(function() Config.SpeedActive = not Config.SpeedActive; SPBtn.Text = Config.SpeedActive and "SPEED: ATIVADA" or "SPEED: DESATIVADA"; updateStatusBorder(SPBtn, SPBtnStroke, Config.SpeedActive); SaveConfig() end)
 
-SPBox.FocusLost:Connect(function()
-    local num = tonumber(SPBox.Text)
-    if num then Config.SpeedValue = math.clamp(num, 0, 999); SPBox.Text = tostring(Config.SpeedValue); SaveConfig() end
-end)
+JPBox.FocusLost:Connect(function() local num = tonumber(JPBox.Text); if num then Config.JumpValue = math.clamp(num, 0, 999); JPBox.Text = tostring(Config.JumpValue); SaveConfig() end end)
+JPBtn.MouseButton1Click:Connect(function() Config.JumpActive = not Config.JumpActive; JPBtn.Text = Config.JumpActive and "JUMP: ATIVADO" or "JUMP: DESATIVADO"; updateStatusBorder(JPBtn, JPBtnStroke, Config.JumpActive); SaveConfig() end)
 
-SPBtn.MouseButton1Click:Connect(function()
-    Config.SpeedActive = not Config.SpeedActive
-    SPBtn.Text = Config.SpeedActive and "SPEED: ATIVADA" or "SPEED: DESATIVADA"
-    updateStatusBorder(SPBtn, SPBtnStroke, Config.SpeedActive)
-    SaveConfig()
-end)
-
-JPBox.FocusLost:Connect(function()
-    local num = tonumber(JPBox.Text)
-    if num then Config.JumpValue = math.clamp(num, 0, 999); JPBox.Text = tostring(Config.JumpValue); SaveConfig() end
-end)
-
-JPBtn.MouseButton1Click:Connect(function()
-    Config.JumpActive = not Config.JumpActive
-    JPBtn.Text = Config.JumpActive and "JUMP: ATIVADO" or "JUMP: DESATIVADO"
-    updateStatusBorder(JPBtn, JPBtnStroke, Config.JumpActive)
-    SaveConfig()
-end)
-
-FOVBox.FocusLost:Connect(function()
-    local num = tonumber(FOVBox.Text)
-    if num then Config.FovValue = math.clamp(num, 0, 9999); FOVBox.Text = tostring(Config.FovValue); SaveConfig() end
-end)
-
+FOVBox.FocusLost:Connect(function() local num = tonumber(FOVBox.Text); if num then Config.FovValue = math.clamp(num, 0, 9999); FOVBox.Text = tostring(Config.FovValue); SaveConfig() end end)
 FOVBtn.MouseButton1Click:Connect(function()
     Config.FovActive = not Config.FovActive
     FOVBtn.Text = Config.FovActive and "FOV INFINITO: ATIVADO" or "FOV INFINITO: DESATIVADO"
