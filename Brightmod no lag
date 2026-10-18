@@ -20,8 +20,8 @@ local CONFIG = {
 local ATMOSPHERE_CONFIG = {
 	Density = 0.3,
 	Offset = 0.25,
-	Color = Color3.fromRGB(199, 199, 199),
-	Decay = Color3.fromRGB(106, 112, 125),
+	Color = Color3.fromRGB(0, 0, 0),
+	Decay = Color3.fromRGB(0, 0, 0),
 	Glare = 0,
 	Haze = 0
 }
